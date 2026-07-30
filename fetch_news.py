@@ -10,6 +10,8 @@ import os
 import hashlib
 import sys
 import io
+import secrets
+import string
 from datetime import datetime, timezone, timedelta
 from urllib.parse import quote
 from xml.etree import ElementTree as ET
@@ -74,6 +76,79 @@ def batch_translate(items, key="title", max_workers=3):
     return items
 
 
+def generate_short_code(length=7):
+    """生成随机短码 (a-zA-Z0-9)"""
+    chars = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(chars) for _ in range(length))
+
+
+def load_url_map():
+    """加载现有的短网址映射表"""
+    path = os.path.join(DATA_DIR, "url_map.json")
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                return {}
+    return {}
+
+
+def save_url_map(url_map):
+    """保存短网址映射表"""
+    path = os.path.join(DATA_DIR, "url_map.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(url_map, f, ensure_ascii=False, indent=2)
+    print(f"  🔗 短网址映射已保存 ({len(url_map)} 条)")
+
+
+def assign_short_links(news_items):
+    """为新闻条目分配短码，返回 (items, url_map)"""
+    url_map = load_url_map()
+    existing_codes = set(url_map.keys())
+    
+    for item in news_items:
+        original_url = item.get("link", "")
+        if not original_url:
+            continue
+        
+        # 如果该 URL 已有短码，直接复用
+        existing_code = None
+        for code, entry in url_map.items():
+            if entry.get("url") == original_url:
+                existing_code = code
+                break
+        
+        if existing_code:
+            item["short_code"] = existing_code
+            item["short_link"] = f"/s/{existing_code}"
+            continue
+        
+        # 生成唯一短码
+        for _ in range(100):  # 最多尝试 100 次
+            code = generate_short_code()
+            if code not in existing_codes:
+                break
+        else:
+            # 极端情况：扩容
+            code = generate_short_code(8)
+        
+        existing_codes.add(code)
+        item["short_code"] = code
+        item["short_link"] = f"/s/{code}"
+        
+        # 记录映射
+        url_map[code] = {
+            "url": original_url,
+            "title": item.get("title", ""),
+            "source": item.get("source", ""),
+            "created": datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S"),
+            "clicks": 0
+        }
+    
+    return news_items, url_map
+
+
 def clean_google_link(url):
     """精简 Google News 链接，去掉追踪参数"""
     if "news.google.com" not in url:
@@ -135,8 +210,14 @@ def save_news(news_items):
     if len(existing) > 2000:
         existing = existing[:2000]
 
+    # 生成短链接
+    existing, url_map = assign_short_links(existing)
+
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         json.dump(existing, f, ensure_ascii=False, indent=2)
+
+    # 保存 URL 映射
+    save_url_map(url_map)
 
     print(f"✅ 已保存 {len(existing)} 条新闻到 {OUTPUT_FILE}")
     return existing

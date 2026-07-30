@@ -279,6 +279,22 @@
             .news-card .meta { font-size: 0.82rem; gap: 0.8rem; }
             .news-card .snippet { font-size: 0.88rem; }
             .news-card .keywords .kw { font-size: 0.75rem; }
+            .short-link {
+                display: inline-block;
+                font-size: 0.7rem;
+                padding: 0.05rem 0.45rem;
+                border-radius: 8px;
+                background: #e3f2fd;
+                color: #1565c0;
+                cursor: pointer;
+                transition: all 0.2s;
+                user-select: none;
+                touch-action: manipulation;
+                border: 1px solid #bbdefb;
+                font-weight: 500;
+            }
+            .short-link:hover { background: #1565c0; color: white; border-color: #1565c0; }
+            .short-link.copied { background: #2d8a4e; color: white; border-color: #2d8a4e; }
             .filter-bar .label { font-size: 0.85rem; }
         }
 
@@ -686,6 +702,10 @@
                 const linkDomain = getCleanDomain(item.source);
                 const linkBadge = linkDomain ? ` <span style="font-size:0.72rem;color:#889;font-weight:400;">🔗${linkDomain}</span>` : '';
                 const linkUrl = item.short_link || item.link;
+                const shortLink = item.short_link || '';
+                const shortLinkHtml = shortLink
+                    ? `<span class="short-link" onclick="copyShortLink('${shortLink}', event)" title="点击复制短链接">🔗 短链</span>`
+                    : '';
                 const titleHtml = titleZh
                     ? `<div class="title-zh">${tagHtml}<a href="${linkUrl}" target="_blank" rel="noopener">${titleZh}</a>${linkBadge}</div><div class="title-en">${item.title}</div>`
                     : `<div class="title-zh">${tagHtml}<a href="${linkUrl}" target="_blank" rel="noopener">${item.title}</a>${linkBadge}</div>`;
@@ -700,6 +720,7 @@
                         <div class="meta">
                             ${sourceHtml}
                             ${timeHtml}
+                            ${shortLinkHtml}
                         </div>
                         ${snippetHtml}
                         <div class="keywords">${keywords}</div>
@@ -772,6 +793,10 @@
                         const linkDomain = getCleanDomain(item.source);
                         const linkBadge = linkDomain ? ` <span style="font-size:0.72rem;color:#889;font-weight:400;">🔗${linkDomain}</span>` : '';
                         const linkUrl = item.short_link || item.link;
+                        const shortLink = item.short_link || '';
+                        const shortLinkHtml = shortLink
+                            ? `<span class="short-link" onclick="copyShortLink('${shortLink}', event)" title="点击复制短链接">🔗 短链</span>`
+                            : '';
                         const titleHtml = titleZh
                             ? `<div class="title-zh">${tagHtml}<a href="${linkUrl}" target="_blank" rel="noopener">${titleZh}</a>${linkBadge}</div><div class="title-en">${item.title}</div>`
                             : `<div class="title-zh">${tagHtml}<a href="${linkUrl}" target="_blank" rel="noopener">${item.title}</a>${linkBadge}</div>`;
@@ -779,7 +804,7 @@
                         return `
                             <div class="news-card">
                                 ${titleHtml}
-                                <div class="meta">${sourceHtml}${timeHtml}</div>
+                                <div class="meta">${sourceHtml}${timeHtml}${shortLinkHtml}</div>
                                 ${snippetHtml}
                                 <div class="keywords">${keywords}</div>
                             </div>
@@ -898,6 +923,48 @@
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, '新闻数据');
             XLSX.writeFile(wb, `DailyCarbonNews_${new Date().toISOString().slice(0,10)}.xlsx`);
+        }
+
+        // 复制短链接到剪贴板
+        function copyShortLink(shortPath, event) {
+            event.stopPropagation();
+            const fullUrl = window.location.protocol + '//' + window.location.host + shortPath;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(fullUrl).then(() => {
+                    showCopiedFeedback(event.target);
+                }).catch(() => {
+                    fallbackCopy(fullUrl, event.target);
+                });
+            } else {
+                fallbackCopy(fullUrl, event.target);
+            }
+        }
+
+        function fallbackCopy(text, el) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                showCopiedFeedback(el);
+            } catch (e) {
+                // 都不行就提示手动复制
+                alert('短链接: ' + text);
+            }
+            document.body.removeChild(textarea);
+        }
+
+        function showCopiedFeedback(el) {
+            const originalText = el.textContent;
+            el.textContent = '✅ 已复制';
+            el.classList.add('copied');
+            setTimeout(() => {
+                el.textContent = originalText;
+                el.classList.remove('copied');
+            }, 2000);
         }
 
         init();
