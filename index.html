@@ -356,6 +356,13 @@
         <span class="label">🏷️ 关键词筛选:</span>
         <button class="filter-btn active" data-filter="all">全部</button>
     </div>
+    <div class="filter-bar" id="timeFilterBar">
+        <span class="label">🕐 时间范围:</span>
+        <button class="filter-btn active" data-time="48h">最近 48 小时</button>
+        <button class="filter-btn" data-time="7d">最近 7 天</button>
+        <button class="filter-btn" data-time="all">全部</button>
+        <span style="margin-left:auto;font-size:0.8rem;color:var(--text-secondary)" id="resultCount"></span>
+    </div>
 
     <div class="search-box">
         <input type="text" id="searchInput" placeholder="🔍 搜索标题、来源、关键词..." />
@@ -408,18 +415,40 @@
             return srcSet.size;
         }
 
+        // 全局状态
+        let allNews = [];
+        let currentTimeRange = '48h';
+
+        function getTimeFiltered(news, range) {
+            if (range === 'all') return news;
+            const hours = range === '7d' ? 168 : 48;
+            const cutoff = new Date(Date.now() - hours * 3600 * 1000);
+            return news.filter(item => {
+                if (!item.published) return false;
+                const d = new Date(item.published.replace(' ', 'T') + '+08:00');
+                return d >= cutoff;
+            });
+        }
+
         function render(news, activeKeyword) {
             const list = document.getElementById('newsList');
             const empty = document.getElementById('emptyState');
 
-            let filtered = news;
+            // 先按时间过滤
+            let filtered = getTimeFiltered(news, currentTimeRange);
+
+            // 再按关键词过滤
             if (activeKeyword && activeKeyword !== 'all') {
-                filtered = news.filter(item =>
+                filtered = filtered.filter(item =>
                     (item.matched_keywords || []).some(kw =>
                         kw.toLowerCase().includes(activeKeyword.toLowerCase())
                     )
                 );
             }
+
+            // 更新计数
+            document.getElementById('resultCount').textContent =
+                `显示 ${filtered.length} / ${allNews.length} 条`;
 
             if (filtered.length === 0) {
                 list.innerHTML = '';
@@ -441,7 +470,6 @@
                     ? `<span class="source">📰 ${item.source}</span>`
                     : '';
 
-                // 中文标题（有翻译则显示，否则用英文）
                 const titleZh = item.title_zh && item.title_zh !== item.title
                     ? item.title_zh : null;
                 const titleHtml = titleZh
@@ -470,7 +498,6 @@
             const bar = document.getElementById('filterBar');
             const keywords = getAllKeywords(news);
 
-            // 清除旧的过滤按钮(保留"全部")
             bar.querySelectorAll('[data-filter]').forEach(el => {
                 if (el.dataset.filter !== 'all') el.remove();
             });
@@ -483,17 +510,16 @@
                 btn.addEventListener('click', () => {
                     bar.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
-                    render(news, kw);
+                    render(allNews, kw);
                 });
                 bar.appendChild(btn);
             });
 
-            // "全部" 按钮
             const allBtn = bar.querySelector('[data-filter="all"]');
             allBtn.addEventListener('click', () => {
                 bar.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
                 allBtn.classList.add('active');
-                render(news, 'all');
+                render(allNews, 'all');
             });
         }
 
@@ -502,11 +528,13 @@
             input.addEventListener('input', () => {
                 const q = input.value.trim().toLowerCase();
                 if (!q) {
-                    render(news, 'all');
+                    render(allNews, 'all');
                     return;
                 }
-                const filtered = news.filter(item =>
+                // 搜索全部数据（不受时间范围限制）
+                const filtered = allNews.filter(item =>
                     item.title.toLowerCase().includes(q) ||
+                    (item.title_zh || '').toLowerCase().includes(q) ||
                     (item.source || '').toLowerCase().includes(q) ||
                     (item.matched_keywords || []).some(kw => kw.toLowerCase().includes(q))
                 );
@@ -517,76 +545,40 @@
                     empty.style.display = 'block';
                 } else {
                     empty.style.display = 'none';
-                    // 临时渲染搜索结果
-                    const activeBtn = document.querySelector('.filter-btn.active');
-                    const activeKw = activeBtn ? activeBtn.dataset.filter : 'all';
-                    renderWithData(filtered, activeKw);
+                    document.getElementById('resultCount').textContent = `搜索到 ${filtered.length} / ${allNews.length} 条`;
+                    list.innerHTML = filtered.map(item => {
+                        const keywords = (item.matched_keywords || []).map(kw =>
+                            `<span class="kw">${kw}</span>`
+                        ).join('');
+                        const timeHtml = item.published ? `<span class="time">🕐 ${item.published}</span>` : '';
+                        const sourceHtml = item.source ? `<span class="source">📰 ${item.source}</span>` : '';
+                        const titleZh = item.title_zh && item.title_zh !== item.title ? item.title_zh : null;
+                        const titleHtml = titleZh
+                            ? `<div class="title-zh"><a href="${item.link}" target="_blank" rel="noopener">${titleZh}</a></div><div class="title-en">${item.title}</div>`
+                            : `<div class="title-zh"><a href="${item.link}" target="_blank" rel="noopener">${item.title}</a></div>`;
+                        const snippetHtml = item.snippet ? `<div class="snippet">${item.snippet}</div>` : '';
+                        return `
+                            <div class="news-card">
+                                ${titleHtml}
+                                <div class="meta">${sourceHtml}${timeHtml}</div>
+                                ${snippetHtml}
+                                <div class="keywords">${keywords}</div>
+                            </div>
+                        `;
+                    }).join('');
                 }
             });
         }
 
-        function renderWithData(data, activeKw) {
-            // Override render for search
-            const list = document.getElementById('newsList');
-            const empty = document.getElementById('emptyState');
-
-            let filtered = data;
-            if (activeKw && activeKw !== 'all') {
-                filtered = data.filter(item =>
-                    (item.matched_keywords || []).some(kw =>
-                        kw.toLowerCase().includes(activeKw.toLowerCase())
-                    )
-                );
-            }
-
-            if (filtered.length === 0) {
-                list.innerHTML = '';
-                empty.style.display = 'block';
-                return;
-            }
-            empty.style.display = 'none';
-
-            list.innerHTML = filtered.map(item => {
-                const keywords = (item.matched_keywords || []).map(kw =>
-                    `<span class="kw">${kw}</span>`
-                ).join('');
-                const timeHtml = item.published
-                    ? `<span class="time">🕐 ${item.published}</span>`
-                    : '';
-                const sourceHtml = item.source
-                    ? `<span class="source">📰 ${item.source}</span>`
-                    : '';
-                const titleZh = item.title_zh && item.title_zh !== item.title
-                    ? item.title_zh : null;
-                const titleHtml = titleZh
-                    ? `<div class="title-zh"><a href="${item.link}" target="_blank" rel="noopener">${titleZh}</a></div><div class="title-en">${item.title}</div>`
-                    : `<div class="title-zh"><a href="${item.link}" target="_blank" rel="noopener">${item.title}</a></div>`;
-                const snippetHtml = item.snippet
-                    ? `<div class="snippet">${item.snippet}</div>`
-                    : '';
-                return `
-                    <div class="news-card">
-                        ${titleHtml}
-                        <div class="meta">
-                            ${sourceHtml}
-                            ${timeHtml}
-                        </div>
-                        ${snippetHtml}
-                        <div class="keywords">${keywords}</div>
-                    </div>
-                `;
-            }).join('');
-        }
-
         async function init() {
             const loading = document.getElementById('loading');
-            const news = await loadNews();
+            allNews = await loadNews();
             loading.style.display = 'none';
 
             // Update stats
-            document.getElementById('totalNews').textContent = news.length;
-            document.getElementById('totalSources').textContent = getUniqueSources(news);
-            document.getElementById('totalKeywords').textContent = getAllKeywords(news).length;
+            document.getElementById('totalNews').textContent = allNews.length;
+            document.getElementById('totalSources').textContent = getUniqueSources(allNews);
+            document.getElementById('totalKeywords').textContent = getAllKeywords(allNews).length;
 
             // Update date
             const today = new Date();
@@ -595,10 +587,22 @@
             document.getElementById('footerDate').textContent =
                 today.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
 
+            // Setup time filter
+            document.querySelectorAll('[data-time]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('[data-time]').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentTimeRange = btn.dataset.time;
+                    const activeFilter = document.querySelector('.filter-btn.active');
+                    const kw = activeFilter ? activeFilter.dataset.filter : 'all';
+                    render(allNews, kw);
+                });
+            });
+
             // Setup
-            setupFilters(news);
-            setupSearch(news);
-            render(news, 'all');
+            setupFilters(allNews);
+            setupSearch(allNews);
+            render(allNews, 'all');
         }
 
         init();

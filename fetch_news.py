@@ -22,9 +22,10 @@ if sys.platform == "win32":
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# 翻译模块 - 使用 googletrans 并发翻译
+# 翻译模块 - 使用 deep-translator
 try:
-    from googletrans import Translator
+    from deep_translator import GoogleTranslator
+    _translator = GoogleTranslator(source='en', target='zh-CN')
     _translation_available = True
 except Exception:
     _translation_available = False
@@ -36,19 +37,16 @@ def translate_to_zh(text):
         return text
     try:
         has_english = any(c.isascii() and c.isalpha() for c in text)
-        if not has_english:
+        if not has_english or len(text) < 10:
             return text
-        t = Translator()
-        result = t.translate(text[:2000], src="en", dest="zh-cn")
-        if result and result.text and result.text != text:
-            return result.text
+        return _translator.translate(text[:2000])
     except Exception:
         pass
     return text
 
 
-def batch_translate(items, key="title", max_workers=8):
-    """并发批量翻译，每项创建独立 Translator 避免线程冲突"""
+def batch_translate(items, key="title", max_workers=5):
+    """并发批量翻译"""
     if not _translation_available:
         return items
     
@@ -56,17 +54,16 @@ def batch_translate(items, key="title", max_workers=8):
     if not texts:
         return items
     
-    print(f"  🌐 正在翻译 {len(texts)} 条 {key}...")
+    print(f"  \U0001f310 正在翻译 {len(texts)} 条 {key}...")
     
     def do_translate(idx, txt):
         try:
             has_en = any(c.isascii() and c.isalpha() for c in txt)
             if not has_en or len(txt) < 10:
                 return idx, txt
-            t = Translator()
-            r = t.translate(txt[:2000], src="en", dest="zh-cn")
-            if r and r.text and r.text != txt:
-                return idx, r.text
+            result = _translator.translate(txt[:2000])
+            if result and result != txt:
+                return idx, result
         except Exception:
             pass
         return idx, txt
@@ -78,8 +75,32 @@ def batch_translate(items, key="title", max_workers=8):
             items[idx][key + "_zh"] = translated
     
     done = sum(1 for item in items if item.get(key + "_zh") and item[key + "_zh"] != item[key])
-    print(f"  ✅ {key} 翻译完成: {done}/{len(texts)}")
+    print(f"  \u2705 {key} 翻译完成: {done}/{len(texts)}")
     return items
+
+
+def clean_google_link(url):
+    """精简 Google News 链接，去掉追踪参数"""
+    if "news.google.com" not in url:
+        return url
+    # 去掉 oc=5, hl=, gl=, ceid= 等追踪参数
+    import re
+    url = re.sub(r"[?&]oc=\d+", "", url)
+    url = re.sub(r"[?&]hl=[^&]+", "", url)
+    url = re.sub(r"[?&]gl=[^&]+", "", url)
+    url = re.sub(r"[?&]ceid=[^&]+", "", url)
+    url = url.rstrip("?&")  # 去掉尾部残留符号
+    return url
+
+
+def resolve_links(items, max_workers=15):
+    """精简 Google News 跳转链接（去掉追踪参数）"""
+    for item in items:
+        link = item.get("link", "")
+        if link and "news.google.com" in link:
+            item["link"] = clean_google_link(link)
+    return items
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -96,7 +117,7 @@ def load_config(filename):
 
 
 def save_news(news_items):
-    """保存新闻数据，保持当天已有数据 + 增量合并"""
+    """保存新闻数据，增量合并（保留历史数据）"""
     existing = []
     if os.path.exists(OUTPUT_FILE):
         with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
@@ -115,9 +136,9 @@ def save_news(news_items):
     # 按时间倒序排列
     existing.sort(key=lambda x: x.get("published", ""), reverse=True)
 
-    # 最多保留 500 条
-    if len(existing) > 500:
-        existing = existing[:500]
+    # 最多保留 2000 条
+    if len(existing) > 2000:
+        existing = existing[:2000]
 
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         json.dump(existing, f, ensure_ascii=False, indent=2)
@@ -140,7 +161,7 @@ def fetch_google_news_rss(query, num_results=20):
     }
 
     encoded_query = quote(query)
-    url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
+    url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en&tbs=qdr:w"
 
     try:
         resp = requests.get(url, headers=headers, timeout=30)
@@ -173,10 +194,8 @@ def fetch_google_news_rss(query, num_results=20):
             if pub_date_str:
                 try:
                     # RSS 时间格式: Mon, 01 Jan 2024 12:00:00 GMT
-                    dt = datetime.strptime(
-                        pub_date_str.replace("GMT", "").replace("UTC", "").strip(),
-                        "%a, %d %b %Y %H:%M:%S %z"
-                    )
+                    clean = pub_date_str.replace("GMT", "+0000").replace("UTC", "+0000").strip()
+                    dt = datetime.strptime(clean, "%a, %d %b %Y %H:%M:%S %z")
                     published = dt.astimezone(TZ).strftime("%Y-%m-%d %H:%M:%S")
                 except (ValueError, IndexError):
                     published = pub_date_str
@@ -212,6 +231,19 @@ def match_keywords(item_text, keywords):
         elif en and en in item_lower:
             matched.append(kw["en"])
     return matched
+
+
+def _parse_date(date_str):
+    """解析日期字符串为 datetime 对象"""
+    if not date_str:
+        return datetime.min.replace(tzinfo=TZ)
+    # 已经是 YYYY-MM-DD HH:MM:SS 格式
+    if len(date_str) >= 10 and date_str[4] == "-":
+        try:
+            return datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=TZ)
+        except ValueError:
+            pass
+    return datetime.min.replace(tzinfo=TZ)
 
 
 def run():
@@ -292,6 +324,24 @@ def run():
     unique_news = [n for n in unique_news if n["matched_keywords"]]
 
     print(f"\n📊 共获取 {len(unique_news)} 条匹配新闻")
+
+    # 过滤：只保留最近 2 天的新闻
+    now = datetime.now(TZ)
+    cutoff = now - timedelta(hours=168)  # 最近 7 天
+    before = len(unique_news)
+    unique_news = [
+        n for n in unique_news
+        if n.get("published") and _parse_date(n["published"]) >= cutoff
+    ]
+    after = len(unique_news)
+    print(f"  🕐 过滤掉 {before - after} 条过期新闻，保留最近 7 天共 {after} 条")
+
+    # 按时间倒序
+    unique_news.sort(key=lambda x: x.get("published", ""), reverse=True)
+
+    # 精简 Google News 链接
+    unique_news = resolve_links(unique_news)
+    print(f"  🔗 已精简 {len(unique_news)} 条链接")
 
     # 批量翻译标题到中文
     unique_news = batch_translate(unique_news, key="title", max_workers=8)
