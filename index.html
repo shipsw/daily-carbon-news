@@ -325,10 +325,12 @@
     </div>
     <div class="filter-bar" id="timeFilterBar">
         <span class="label">🕐 时间范围:</span>
+        <button class="filter-btn" data-time="24h">最近 24 小时</button>
         <button class="filter-btn active" data-time="48h">最近 48 小时</button>
         <button class="filter-btn" data-time="7d">最近 7 天</button>
         <button class="filter-btn" data-time="all">全部</button>
         <span style="margin-left:auto;font-size:0.8rem;color:var(--text-secondary)" id="resultCount"></span>
+        <button class="filter-btn" id="exportBtn" style="background:var(--accent);color:white;border:none;font-weight:600;">📥 导出 Excel</button>
     </div>
     <div class="filter-bar" id="mediaLegend" style="border-bottom:1px solid var(--border);padding:0.4rem 1rem;gap:0.6rem;">
         <span class="label">📡 媒体标注:</span>
@@ -413,7 +415,7 @@
 
         function getTimeFiltered(news, range) {
             if (range === 'all') return news;
-            const hours = range === '7d' ? 168 : 48;
+            const hours = range === '24h' ? 24 : range === '48h' ? 48 : 168;
             const cutoff = new Date(Date.now() - hours * 3600 * 1000);
             return news.filter(item => {
                 if (!item.published) return false;
@@ -595,9 +597,55 @@
             setupFilters(allNews);
             setupSearch(allNews);
             render(allNews, 'all');
+
+            // 导出 Excel
+            document.getElementById('exportBtn').addEventListener('click', () => {
+                const activeFilter = document.querySelector('.filter-btn.active');
+                const kw = activeFilter ? activeFilter.dataset.filter : 'all';
+                let data = allNews;
+                if (kw && kw !== 'all') {
+                    data = data.filter(item =>
+                        (item.matched_keywords || []).some(k =>
+                            k.toLowerCase().includes(kw.toLowerCase())
+                        )
+                    );
+                }
+                data = getTimeFiltered(data, currentTimeRange);
+                exportToXLSX(data);
+            });
         }
 
-        init();
+        function exportToXLSX(data) {
+            if (typeof XLSX === 'undefined') {
+                // 动态加载 SheetJS
+                const s = document.createElement('script');
+                s.src = 'https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js';
+                s.onload = () => doExport(data);
+                document.head.appendChild(s);
+            } else {
+                doExport(data);
+            }
+        }
+
+        function doExport(data) {
+            const rows = data.map((item, i) => ({
+                '序号': i + 1,
+                '中文标题': item.title_zh || item.title,
+                '英文标题': item.title,
+                '来源': item.source || '',
+                '发布时间': item.published || '',
+                '摘要': (item.snippet || '').replace(/<[^>]+>/g, ''),
+                '链接': item.link || '',
+                '匹配关键词': (item.matched_keywords || []).join('、'),
+            }));
+            const ws = XLSX.utils.json_to_sheet(rows);
+            ws['!cols'] = [
+                {wch:5}, {wch:45}, {wch:45}, {wch:20}, {wch:20}, {wch:50}, {wch:50}, {wch:30}
+            ];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, '新闻数据');
+            XLSX.writeFile(wb, `DailyCarbonNews_${new Date().toISOString().slice(0,10)}.xlsx`);
+        }
     </script>
 </body>
 </html>
