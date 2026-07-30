@@ -646,6 +646,8 @@
             XLSX.utils.book_append_sheet(wb, ws, '新闻数据');
             XLSX.writeFile(wb, `DailyCarbonNews_${new Date().toISOString().slice(0,10)}.xlsx`);
         }
+
+        init();
     </script>
 </body>
 </html>
