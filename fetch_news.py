@@ -161,7 +161,7 @@ def fetch_google_news_rss(query, num_results=20):
     }
 
     encoded_query = quote(query)
-    url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en&tbs=qdr:w"
+    url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en&num=100"
 
     try:
         resp = requests.get(url, headers=headers, timeout=30)
@@ -266,49 +266,109 @@ def run():
     # 1. 用英文关键词搜全部媒体（一次搜索多个关键词）
     # 2. 再用中文关键词搜
 
-    # 构建搜索查询
+    # 构建搜索查询 - 广泛搜索 + 来源过滤
     en_keywords = [kw["en"] for kw in keywords]
     zh_keywords = [kw["zh"] for kw in keywords]
-
-    # 按媒体域名构建 site 查询
     domains = [m["domain"] for m in media_list]
-    site_queries = " OR ".join([f"site:{d}" for d in domains])
+    media_names = [m["name"] for m in media_list]
 
-    # 英文关键词搜索（批量）
-    print("🔍 搜索英文关键词...")
-    batch_size = 5  # 每批 5 个关键词，避免查询过长
-    for i in range(0, len(en_keywords), batch_size):
-        batch = en_keywords[i : i + batch_size]
-        kw_query = " OR ".join([f'"{kw}"' for kw in batch])
-        full_query = f"({kw_query}) ({site_queries})"
-        print(f"  批次 {i//batch_size + 1}: {batch[0]}...")
+    def is_valid_source(source):
+        """检查来源是否在我们关注的媒体列表中"""
+        if not source:
+            return False
+        s = source.lower()
+        # 域名匹配
+        for d in domains:
+            d_clean = d.replace("www.", "")
+            if d_clean in s:
+                return True
+        # 名称匹配
+        for mn in media_names:
+            if mn.lower() in s:
+                return True
+        # 额外常用名称 - 扩大气候/能源类相关媒体
+        extra = ["reuters", "bbc", "bloomberg", "wsj", "cnn", "euractiv", 
+                 "politico", "carbon brief", "inside climate", "e&e news",
+                 "climate home", "the hill", "ap news", "associated press",
+                 "npr", "propublica", "the conversation", "axios",
+                 "business green", "edie", "pv magazine", "recharge",
+                 "energy monitor", "ieefa", "the energy collective",
+                 "sustainable brands", "environmental leader",
+                 "greentech media", "canary media", "grist",
+                 "newsweek", "time", "economist", "forbes",
+                 "new scientist", "national geographic",
+                 "scientific american", "science daily"]
+        for e in extra:
+            if e in s:
+                return True
+        return False
 
-        items = fetch_google_news_rss(full_query, num_results=20)
+    # 策略1: 按关键词主题分组搜索
+    topic_groups = [
+        "climate change global warming emissions",
+        "carbon neutrality net zero emissions",
+        "renewable energy solar wind clean power",
+        "energy transition fossil fuel green",
+        "electric vehicle EV carbon tax trading",
+        "green finance sustainable investment ESG",
+        "circular economy climate policy decarbonization",
+        "carbon footprint carbon capture hydrogen energy",
+        "carbon trading emission offset credits",
+        "energy efficiency smart grid storage battery",
+        "climate resilience adaptation infrastructure",
+        "carbon accounting footprint reporting",
+    ]
 
-        # 标记匹配的关键词
+    # 追加媒体专属搜索
+    media_searches = [
+        "site:nytimes.com climate OR energy OR carbon",
+        "site:theguardian.com climate OR energy OR carbon",
+        "site:bbc.com climate OR energy OR carbon",
+        "site:reuters.com climate OR energy OR carbon",
+        "site:bloomberg.com climate OR energy OR carbon",
+        "site:washingtonpost.com climate OR energy OR carbon",
+        "site:wsj.com climate OR energy OR carbon",
+        "site:ft.com climate OR energy OR carbon",
+        "site:cnn.com climate OR energy",
+        "site:independent.co.uk climate OR energy OR carbon",
+        "site:telegraph.co.uk climate OR energy",
+        "site:politico.eu climate OR energy",
+    ]
+    topic_groups.extend(media_searches)
+
+    # 追加单个重要关键词搜索（不带site限制，广泛抓取）
+    single_terms = ["climate", "carbon", "renewable", "emissions", "clean energy",
+                    "green", "solar", "wind", "electric vehicle", "net zero"]
+    topic_groups.extend(single_terms)
+
+    print("🔍 搜索英文主题...")
+    for i, topic in enumerate(topic_groups):
+        print(f"  主题 {i+1}: {topic[:40]}...")
+        items = fetch_google_news_rss(topic, num_results=100)
         for item in items:
-            text_to_check = f"{item['title']} {item['snippet']}"
-            item["matched_keywords"] = match_keywords(text_to_check, keywords)
+            if is_valid_source(item.get("source", "")):
+                text = f"{item['title']} {item['snippet']}"
+                item["matched_keywords"] = match_keywords(text, keywords)
+                if item["matched_keywords"]:
+                    all_news.append(item)
+        print(f"    -> 获取 {len(items)} 条，当前累计 {len(all_news)} 条")
+        time.sleep(0.5)
 
-        all_news.extend(items)
-        time.sleep(1)  # 礼貌延迟
-
-    # 中文关键词搜索（批量）
+    # 策略2: 中文关键词搜索
     print("\n🔍 搜索中文关键词...")
-    for i in range(0, len(zh_keywords), batch_size):
-        batch = zh_keywords[i : i + batch_size]
-        kw_query = " OR ".join([f'"{kw}"' for kw in batch])
-        full_query = f"({kw_query}) ({site_queries})"
-        print(f"  批次 {i//batch_size + 1}: {batch[0]}...")
-
-        items = fetch_google_news_rss(full_query, num_results=20)
-
+    for i in range(0, len(zh_keywords), 10):
+        batch = zh_keywords[i : i + 10]
+        kw_query = " OR ".join(batch)
+        print(f"  批次 {i//10 + 1}: {batch[0]}...")
+        items = fetch_google_news_rss(kw_query, num_results=100)
         for item in items:
-            text_to_check = f"{item['title']} {item['snippet']}"
-            item["matched_keywords"] = match_keywords(text_to_check, keywords)
-
-        all_news.extend(items)
-        time.sleep(1)
+            if is_valid_source(item.get("source", "")):
+                text = f"{item['title']} {item['snippet']}"
+                item["matched_keywords"] = match_keywords(text, keywords)
+                if item["matched_keywords"]:
+                    all_news.append(item)
+        print(f"    -> 获取 {len(items)} 条，当前累计 {len(all_news)} 条")
+        time.sleep(0.5)
 
     # 去重
     seen = set()
@@ -325,26 +385,15 @@ def run():
 
     print(f"\n📊 共获取 {len(unique_news)} 条匹配新闻")
 
-    # 过滤：只保留最近 2 天的新闻
-    now = datetime.now(TZ)
-    cutoff = now - timedelta(hours=168)  # 最近 7 天
-    before = len(unique_news)
-    unique_news = [
-        n for n in unique_news
-        if n.get("published") and _parse_date(n["published"]) >= cutoff
-    ]
-    after = len(unique_news)
-    print(f"  🕐 过滤掉 {before - after} 条过期新闻，保留最近 7 天共 {after} 条")
-
     # 按时间倒序
     unique_news.sort(key=lambda x: x.get("published", ""), reverse=True)
 
     # 精简 Google News 链接
     unique_news = resolve_links(unique_news)
-    print(f"  🔗 已精简 {len(unique_news)} 条链接")
+    print(f"  🔗 精简链接完成")
 
     # 批量翻译标题到中文
-    unique_news = batch_translate(unique_news, key="title", max_workers=8)
+    unique_news = batch_translate(unique_news, key="title", max_workers=5)
 
     # 统计翻译情况
     translated_count = sum(1 for n in unique_news if n.get("title_zh") and n["title_zh"] != n["title"])
