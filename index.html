@@ -555,6 +555,69 @@
             return '';
         }
 
+        // 从来源名提取短域名显示
+        const domainMap = {
+            'new york times': 'nytimes.com',
+            'washington post': 'washingtonpost.com',
+            'wall street journal': 'wsj.com',
+            'wsj': 'wsj.com',
+            'los angeles times': 'latimes.com',
+            'usa today': 'usatoday.com',
+            'bloomberg': 'bloomberg.com',
+            'cnn': 'cnn.com',
+            'the times': 'thetimes.co.uk',
+            'the guardian': 'theguardian.com',
+            'daily telegraph': 'telegraph.co.uk',
+            'telegraph': 'telegraph.co.uk',
+            'the independent': 'independent.co.uk',
+            'financial times': 'ft.com',
+            'daily mail': 'dailymail.co.uk',
+            'the sun': 'thesun.co.uk',
+            'bbc': 'bbc.com',
+            'reuters': 'reuters.com',
+            'euronews': 'euronews.com',
+            'politico': 'politico.eu',
+            'afp': 'afp.com',
+            'euractiv': 'euractiv.com',
+            'el pais': 'elpais.com',
+            'país': 'elpais.com',
+            'business times': 'businesstimes.com.sg',
+            'straits times': 'straitstimes.com',
+            'ap news': 'apnews.com',
+            'axios': 'axios.com',
+            'forbes': 'forbes.com',
+            'npr': 'npr.org',
+            'the hill': 'thehill.com',
+            'time magazine': 'time.com',
+            'newsweek': 'newsweek.com',
+            'economist': 'economist.com',
+            'carbon brief': 'carbonbrief.org',
+            'inside climate': 'insideclimatenews.org',
+            'canary media': 'canarymedia.com',
+            'grist': 'grist.org',
+            'the conversation': 'theconversation.com',
+            'e&e news': 'eenews.net',
+            'bloombergnef': 'about.bnef.com',
+            'aspen times': 'aspentimes.com',
+            'tech times': 'techtimes.com',
+            'times higher education': 'timeshighereducation.com',
+            'sap': 'sap.com',
+            'ieefa': 'ieefa.org',
+            'economictimes': 'economictimes.indiatimes.com',
+            'newtimes': 'newtimes.co.rw',
+            'tasmanian times': 'tasmaniantimes.com',
+            'times of malta': 'timesofmalta.com',
+            'times union': 'timesunion.com',
+        };
+        function getCleanDomain(source) {
+            if (!source) return '';
+            const s = source.toLowerCase();
+            for (const [key, domain] of Object.entries(domainMap)) {
+                if (s.includes(key)) return domain;
+            }
+            return '';
+        }
+
         function getTimeFiltered(news, range) {
             if (range === 'all') return news;
             const hours = range === '24h' ? 24 : range === '48h' ? 48 : 168;
@@ -620,9 +683,11 @@
 
                 const titleZh = item.title_zh && item.title_zh !== item.title
                     ? item.title_zh : null;
+                const linkDomain = getCleanDomain(item.source);
+                const linkBadge = linkDomain ? ` <span style="font-size:0.72rem;color:#889;font-weight:400;">🔗${linkDomain}</span>` : '';
                 const titleHtml = titleZh
-                    ? `<div class="title-zh">${tagHtml}<a href="${item.link}" target="_blank" rel="noopener">${titleZh}</a></div><div class="title-en">${item.title}</div>`
-                    : `<div class="title-zh">${tagHtml}<a href="${item.link}" target="_blank" rel="noopener">${item.title}</a></div>`;
+                    ? `<div class="title-zh">${tagHtml}<a href="${item.link}" target="_blank" rel="noopener">${titleZh}</a>${linkBadge}</div><div class="title-en">${item.title}</div>`
+                    : `<div class="title-zh">${tagHtml}<a href="${item.link}" target="_blank" rel="noopener">${item.title}</a>${linkBadge}</div>`;
 
                 const snippetHtml = item.snippet
                     ? `<div class="snippet">${item.snippet}</div>`
@@ -703,9 +768,11 @@
                         const tags = getMediaTags(item.source);
                         const tagHtml = tags ? `<span style="font-size:0.75rem;margin-right:0.4rem;">${tags}</span>` : '';
                         const titleZh = item.title_zh && item.title_zh !== item.title ? item.title_zh : null;
+                        const linkDomain = getCleanDomain(item.source);
+                        const linkBadge = linkDomain ? ` <span style="font-size:0.72rem;color:#889;font-weight:400;">🔗${linkDomain}</span>` : '';
                         const titleHtml = titleZh
-                            ? `<div class="title-zh">${tagHtml}<a href="${item.link}" target="_blank" rel="noopener">${titleZh}</a></div><div class="title-en">${item.title}</div>`
-                            : `<div class="title-zh">${tagHtml}<a href="${item.link}" target="_blank" rel="noopener">${item.title}</a></div>`;
+                            ? `<div class="title-zh">${tagHtml}<a href="${item.link}" target="_blank" rel="noopener">${titleZh}</a>${linkBadge}</div><div class="title-en">${item.title}</div>`
+                            : `<div class="title-zh">${tagHtml}<a href="${item.link}" target="_blank" rel="noopener">${item.title}</a>${linkBadge}</div>`;
                         const snippetHtml = item.snippet ? `<div class="snippet">${item.snippet}</div>` : '';
                         return `
                             <div class="news-card">
@@ -819,11 +886,12 @@
                 '发布时间': item.published || '',
                 '摘要': (item.snippet || '').replace(/<[^>]+>/g, ''),
                 '链接': item.link || '',
+                '短链': getCleanDomain(item.source) ? `https://${getCleanDomain(item.source)}` : item.link || '',
                 '匹配关键词': (item.matched_keywords || []).join('、'),
             }));
             const ws = XLSX.utils.json_to_sheet(rows);
             ws['!cols'] = [
-                {wch:5}, {wch:45}, {wch:45}, {wch:20}, {wch:12}, {wch:14}, {wch:20}, {wch:50}, {wch:50}, {wch:30}
+                {wch:5}, {wch:45}, {wch:45}, {wch:20}, {wch:12}, {wch:14}, {wch:20}, {wch:50}, {wch:30}, {wch:25}
             ];
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, '新闻数据');
