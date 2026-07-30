@@ -490,6 +490,71 @@
             return source;  // 没匹配则返回原名
         }
 
+        // 来源国家映射
+        const countryMap = [
+            ['new york times', '🇺🇸 美国'],
+            ['washington post', '🇺🇸 美国'],
+            ['wall street journal', '🇺🇸 美国'],
+            ['wsj', '🇺🇸 美国'],
+            ['los angeles times', '🇺🇸 美国'],
+            ['latimes', '🇺🇸 美国'],
+            ['usa today', '🇺🇸 美国'],
+            ['bloomberg', '🇺🇸 美国'],
+            ['cnn', '🇺🇸 美国'],
+            ['the times', '🇬🇧 英国'],
+            ['the guardian', '🇬🇧 英国'],
+            ['daily telegraph', '🇬🇧 英国'],
+            ['telegraph', '🇬🇧 英国'],
+            ['the independent', '🇬🇧 英国'],
+            ['independent', '🇬🇧 英国'],
+            ['financial times', '🇬🇧 英国'],
+            ['daily mail', '🇬🇧 英国'],
+            ['the sun', '🇬🇧 英国'],
+            ['bbc', '🇬🇧 英国'],
+            ['reuters', '🇬🇧 英国'],
+            ['euronews', '🇪🇺 欧洲'],
+            ['politico', '🇪🇺 欧洲'],
+            ['afp', '🇫🇷 法国'],
+            ['euractiv', '🇪🇺 欧洲'],
+            ['el pais', '🇪🇸 西班牙'],
+            ['paÍs', '🇪🇸 西班牙'],
+            ['business times', '🇸🇬 新加坡'],
+            ['straits times', '🇸🇬 新加坡'],
+            ['ap news', '🇺🇸 美国'],
+            ['axios', '🇺🇸 美国'],
+            ['forbes', '🇺🇸 美国'],
+            ['npr', '🇺🇸 美国'],
+            ['the hill', '🇺🇸 美国'],
+            ['time magazine', '🇺🇸 美国'],
+            ['newsweek', '🇺🇸 美国'],
+            ['economist', '🇬🇧 英国'],
+            ['carbon brief', '🇬🇧 英国'],
+            ['inside climate', '🇺🇸 美国'],
+            ['canary media', '🇺🇸 美国'],
+            ['grist', '🇺🇸 美国'],
+            ['the conversation', '🌍 国际'],
+            ['e&e news', '🇺🇸 美国'],
+            ['bloombergnef', '🇺🇸 美国'],
+            ['aspen times', '🇺🇸 美国'],
+            ['tech times', '🇺🇸 美国'],
+            ['times higher education', '🇬🇧 英国'],
+            ['sap news', '🇩🇪 德国'],
+            ['ieefa', '🇺🇸 美国'],
+            ['economictimes', '🇮🇳 印度'],
+            ['newtimes.co.rw', '🇷🇼 卢旺达'],
+            ['tasmanian times', '🇦🇺 澳大利亚'],
+            ['times of malta', '🇲🇹 马耳他'],
+            ['times union', '🇺🇸 美国'],
+        ];
+        function getSourceCountry(source) {
+            if (!source) return '';
+            const s = source.toLowerCase();
+            for (const [key, country] of countryMap) {
+                if (s.includes(key)) return country;
+            }
+            return '';
+        }
+
         function getTimeFiltered(news, range) {
             if (range === 'all') return news;
             const hours = range === '24h' ? 24 : range === '48h' ? 48 : 168;
@@ -546,7 +611,7 @@
                     : '';
 
                 const sourceHtml = item.source
-                    ? `<span class="source">📰 ${getSourceZh(item.source)}</span>`
+                    ? `<span class="source">📰 ${getSourceZh(item.source)} ${getSourceCountry(item.source)}</span>`
                     : '';
 
                 // 媒体标签（放在标题前）
@@ -634,7 +699,7 @@
                             `<span class="kw">${kw}</span>`
                         ).join('');
                         const timeHtml = item.published ? `<span class="time">🕐 ${item.published}</span>` : '';
-                        const sourceHtml = item.source ? `<span class="source">📰 ${getSourceZh(item.source)}</span>` : '';
+                        const sourceHtml = item.source ? `<span class="source">📰 ${getSourceZh(item.source)} ${getSourceCountry(item.source)}</span>` : '';
                         const tags = getMediaTags(item.source);
                         const tagHtml = tags ? `<span style="font-size:0.75rem;margin-right:0.4rem;">${tags}</span>` : '';
                         const titleZh = item.title_zh && item.title_zh !== item.title ? item.title_zh : null;
@@ -742,6 +807,7 @@
                 '中文标题': item.title_zh || item.title,
                 '英文标题': item.title,
                 '来源': getSourceZh(item.source) || item.source || '',
+                '来源国': getSourceCountry(item.source) || '',
                 '媒体标注': (() => {
                     const t = getMediaTags(item.source);
                     const labels = [];
@@ -757,7 +823,7 @@
             }));
             const ws = XLSX.utils.json_to_sheet(rows);
             ws['!cols'] = [
-                {wch:5}, {wch:45}, {wch:45}, {wch:20}, {wch:12}, {wch:20}, {wch:50}, {wch:50}, {wch:30}
+                {wch:5}, {wch:45}, {wch:45}, {wch:20}, {wch:12}, {wch:14}, {wch:20}, {wch:50}, {wch:50}, {wch:30}
             ];
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, '新闻数据');
