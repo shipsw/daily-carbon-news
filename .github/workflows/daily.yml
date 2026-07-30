@@ -1,0 +1,68 @@
+name: Daily Carbon News 自动更新
+
+on:
+  schedule:
+    # 北京时间每天 8:00、14:00、20:00 运行（UTC 0:00, 6:00, 12:00）
+    - cron: '0 0,6,12 * * *'
+  workflow_dispatch:  # 支持手动触发
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  fetch-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 📥 检出代码
+        uses: actions/checkout@v4
+
+      - name: 🐍 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: 📦 安装依赖
+        run: |
+          pip install -r requirements.txt
+
+      - name: 🕸️ 抓取新闻
+        run: |
+          python fetch_news.py
+
+      - name: 📄 准备部署文件
+        run: |
+          mkdir -p _site
+          cp -r index.html data/ config/ _site/
+          cp -r data/ _site/
+          cp -r config/ _site/
+          ls -la _site/
+
+      - name: 📤 提交新闻数据更新
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/news.json
+          git diff --staged --quiet || git commit -m "🤖 每日新闻自动更新 $(date +'%Y-%m-%d %H:%M')"
+          git push
+
+      - name: ⚡ 上传 Pages 工件
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "_site"
+
+      - name: 🚀 部署到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
