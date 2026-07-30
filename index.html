@@ -676,7 +676,11 @@
                 '中文标题': item.title_zh || item.title,
                 '英文标题': item.title,
                 '来源': item.source || '',
-                '媒体标注': getMediaTags(item.source) || '',
+                '媒体标注': (() => {
+                    const t = getMediaTags(item.source);
+                    const m = {'🛡️':'需代理','💳':'需订阅','🔓':'公开'};
+                    return t.split('').map(c => m[c]||'').filter(Boolean).join('、') || '';
+                })(),
                 '发布时间': item.published || '',
                 '摘要': (item.snippet || '').replace(/<[^>]+>/g, ''),
                 '链接': item.link || '',
