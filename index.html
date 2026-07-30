@@ -424,6 +424,65 @@
             return '';
         }
 
+        // 来源中文名映射
+        function getSourceZh(source) {
+            if (!source) return source;
+            const s = source.toLowerCase();
+            const map = [
+                ['new york times', '纽约时报'],
+                ['washington post', '华盛顿邮报'],
+                ['wall street journal', '华尔街日报'],
+                ['wsj', '华尔街日报'],
+                ['los angeles times', '洛杉矶时报'],
+                ['latimes', '洛杉矶时报'],
+                ['usa today', '今日美国'],
+                ['bloomberg', '彭博社'],
+                ['cnn', 'CNN'],
+                ['the times', '泰晤士报'],
+                ['the guardian', '卫报'],
+                ['daily telegraph', '每日电讯报'],
+                ['telegraph', '每日电讯报'],
+                ['the independent', '独立报'],
+                ['independent', '独立报'],
+                ['financial times', '金融时报'],
+                ['daily mail', '每日邮报'],
+                ['the sun', '太阳报'],
+                ['bbc', 'BBC'],
+                ['reuters', '路透社'],
+                ['euronews', '欧洲新闻台'],
+                ['politico', 'Politico'],
+                ['afp', '法新社'],
+                ['euractiv', 'Euractiv'],
+                ['elpais', '国家报'],
+                ['business times', '商业时报'],
+                ['straits times', '海峡时报'],
+                ['ap news', '美联社'],
+                ['axios', 'Axios'],
+                ['forbes', '福布斯'],
+                ['npr', 'NPR'],
+                ['the hill', '国会山报'],
+                ['time magazine', '时代周刊'],
+                ['newsweek', '新闻周刊'],
+                ['economist', '经济学人'],
+                ['carbon brief', 'Carbon Brief'],
+                ['inside climate', 'Inside Climate News'],
+                ['canary media', 'Canary Media'],
+                ['grist', 'Grist'],
+                ['the conversation', 'The Conversation'],
+                ['e&e news', 'E&E News'],
+                ['bloombergnef', '彭博新能源财经'],
+                ['aspen times', '阿斯彭时报'],
+                ['tech times', 'Tech Times'],
+                ['times higher education', '泰晤士高等教育'],
+                ['sap news', 'SAP'],
+                ['ieefa', 'IEEFA'],
+            ];
+            for (const [key, zh] of map) {
+                if (s.includes(key)) return zh;
+            }
+            return source;  // 没匹配则返回原名
+        }
+
         function getTimeFiltered(news, range) {
             if (range === 'all') return news;
             const hours = range === '24h' ? 24 : range === '48h' ? 48 : 168;
@@ -480,7 +539,7 @@
                     : '';
 
                 const sourceHtml = item.source
-                    ? `<span class="source">📰 ${item.source}</span>`
+                    ? `<span class="source">📰 ${getSourceZh(item.source)}</span>`
                     : '';
 
                 // 媒体标签（放在标题前）
@@ -568,7 +627,7 @@
                             `<span class="kw">${kw}</span>`
                         ).join('');
                         const timeHtml = item.published ? `<span class="time">🕐 ${item.published}</span>` : '';
-                        const sourceHtml = item.source ? `<span class="source">📰 ${item.source}</span>` : '';
+                        const sourceHtml = item.source ? `<span class="source">📰 ${getSourceZh(item.source)}</span>` : '';
                         const tags = getMediaTags(item.source);
                         const tagHtml = tags ? `<span style="font-size:0.75rem;margin-right:0.4rem;">${tags}</span>` : '';
                         const titleZh = item.title_zh && item.title_zh !== item.title ? item.title_zh : null;
@@ -675,7 +734,7 @@
                 '序号': i + 1,
                 '中文标题': item.title_zh || item.title,
                 '英文标题': item.title,
-                '来源': item.source || '',
+                '来源': getSourceZh(item.source) || item.source || '',
                 '媒体标注': (() => {
                     const t = getMediaTags(item.source);
                     const labels = [];
