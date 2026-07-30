@@ -678,8 +678,11 @@
                 '来源': item.source || '',
                 '媒体标注': (() => {
                     const t = getMediaTags(item.source);
-                    const m = {'🛡️':'需代理','💳':'需订阅','🔓':'公开'};
-                    return t.split('').map(c => m[c]||'').filter(Boolean).join('、') || '';
+                    const labels = [];
+                    if (t.includes('🛡')) labels.push('需代理');
+                    if (t.includes('💳')) labels.push('需订阅');
+                    if (t.includes('🔓')) labels.push('公开');
+                    return labels.join('、');
                 })(),
                 '发布时间': item.published || '',
                 '摘要': (item.snippet || '').replace(/<[^>]+>/g, ''),
