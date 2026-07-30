@@ -685,9 +685,10 @@
                     ? item.title_zh : null;
                 const linkDomain = getCleanDomain(item.source);
                 const linkBadge = linkDomain ? ` <span style="font-size:0.72rem;color:#889;font-weight:400;">🔗${linkDomain}</span>` : '';
+                const linkUrl = item.short_link || item.link;
                 const titleHtml = titleZh
-                    ? `<div class="title-zh">${tagHtml}<a href="${item.link}" target="_blank" rel="noopener">${titleZh}</a>${linkBadge}</div><div class="title-en">${item.title}</div>`
-                    : `<div class="title-zh">${tagHtml}<a href="${item.link}" target="_blank" rel="noopener">${item.title}</a>${linkBadge}</div>`;
+                    ? `<div class="title-zh">${tagHtml}<a href="${linkUrl}" target="_blank" rel="noopener">${titleZh}</a>${linkBadge}</div><div class="title-en">${item.title}</div>`
+                    : `<div class="title-zh">${tagHtml}<a href="${linkUrl}" target="_blank" rel="noopener">${item.title}</a>${linkBadge}</div>`;
 
                 const snippetHtml = item.snippet
                     ? `<div class="snippet">${item.snippet}</div>`
@@ -770,9 +771,10 @@
                         const titleZh = item.title_zh && item.title_zh !== item.title ? item.title_zh : null;
                         const linkDomain = getCleanDomain(item.source);
                         const linkBadge = linkDomain ? ` <span style="font-size:0.72rem;color:#889;font-weight:400;">🔗${linkDomain}</span>` : '';
+                        const linkUrl = item.short_link || item.link;
                         const titleHtml = titleZh
-                            ? `<div class="title-zh">${tagHtml}<a href="${item.link}" target="_blank" rel="noopener">${titleZh}</a>${linkBadge}</div><div class="title-en">${item.title}</div>`
-                            : `<div class="title-zh">${tagHtml}<a href="${item.link}" target="_blank" rel="noopener">${item.title}</a>${linkBadge}</div>`;
+                            ? `<div class="title-zh">${tagHtml}<a href="${linkUrl}" target="_blank" rel="noopener">${titleZh}</a>${linkBadge}</div><div class="title-en">${item.title}</div>`
+                            : `<div class="title-zh">${tagHtml}<a href="${linkUrl}" target="_blank" rel="noopener">${item.title}</a>${linkBadge}</div>`;
                         const snippetHtml = item.snippet ? `<div class="snippet">${item.snippet}</div>` : '';
                         return `
                             <div class="news-card">
