@@ -45,8 +45,8 @@ def translate_to_zh(text):
     return text
 
 
-def batch_translate(items, key="title", max_workers=5):
-    """并发批量翻译"""
+def batch_translate(items, key="title", max_workers=3):
+    """串行翻译（避免线程安全问题）"""
     if not _translation_available:
         return items
     
@@ -54,28 +54,23 @@ def batch_translate(items, key="title", max_workers=5):
     if not texts:
         return items
     
-    print(f"  \U0001f310 正在翻译 {len(texts)} 条 {key}...")
+    print(f"  🌐 正在翻译 {len(texts)} 条 {key}...")
     
-    def do_translate(idx, txt):
+    done = 0
+    for idx, txt in texts:
         try:
             has_en = any(c.isascii() and c.isalpha() for c in txt)
-            if not has_en or len(txt) < 10:
-                return idx, txt
-            result = _translator.translate(txt[:2000])
-            if result and result != txt:
-                return idx, result
+            if has_en and len(txt) >= 10:
+                result = _translator.translate(txt[:2000])
+                if result and result != txt:
+                    items[idx][key + "_zh"] = result
+                    done += 1
+                    continue
         except Exception:
             pass
-        return idx, txt
+        items[idx][key + "_zh"] = txt
     
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(do_translate, idx, txt): idx for idx, txt in texts}
-        for future in as_completed(futures):
-            idx, translated = future.result()
-            items[idx][key + "_zh"] = translated
-    
-    done = sum(1 for item in items if item.get(key + "_zh") and item[key + "_zh"] != item[key])
-    print(f"  \u2705 {key} 翻译完成: {done}/{len(texts)}")
+    print(f"  ✅ {key} 翻译完成: {done}/{len(texts)}")
     return items
 
 
@@ -393,7 +388,7 @@ def run():
     print(f"  🔗 精简链接完成")
 
     # 批量翻译标题到中文
-    unique_news = batch_translate(unique_news, key="title", max_workers=5)
+    unique_news = batch_translate(unique_news, key="title")
 
     # 统计翻译情况
     translated_count = sum(1 for n in unique_news if n.get("title_zh") and n["title_zh"] != n["title"])
