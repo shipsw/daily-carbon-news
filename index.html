@@ -676,6 +676,7 @@
                 '中文标题': item.title_zh || item.title,
                 '英文标题': item.title,
                 '来源': item.source || '',
+                '媒体标注': getMediaTags(item.source) || '',
                 '发布时间': item.published || '',
                 '摘要': (item.snippet || '').replace(/<[^>]+>/g, ''),
                 '链接': item.link || '',
@@ -683,7 +684,7 @@
             }));
             const ws = XLSX.utils.json_to_sheet(rows);
             ws['!cols'] = [
-                {wch:5}, {wch:45}, {wch:45}, {wch:20}, {wch:20}, {wch:50}, {wch:50}, {wch:30}
+                {wch:5}, {wch:45}, {wch:45}, {wch:20}, {wch:12}, {wch:20}, {wch:50}, {wch:50}, {wch:30}
             ];
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, '新闻数据');
