@@ -330,6 +330,12 @@
         <button class="filter-btn" data-time="all">全部</button>
         <span style="margin-left:auto;font-size:0.8rem;color:var(--text-secondary)" id="resultCount"></span>
     </div>
+    <div class="filter-bar" id="mediaLegend" style="border-bottom:1px solid var(--border);padding:0.4rem 1rem;gap:0.6rem;">
+        <span class="label">📡 媒体标注:</span>
+        <span class="filter-btn" style="font-size:0.7rem;padding:0.15rem 0.5rem;cursor:default;background:#fff3e0;border-color:#ffb74d;">🛡️ 需代理</span>
+        <span class="filter-btn" style="font-size:0.7rem;padding:0.15rem 0.5rem;cursor:default;background:#fce4ec;border-color:#e57373;">💳 需订阅</span>
+        <span class="filter-btn" style="font-size:0.7rem;padding:0.15rem 0.5rem;cursor:default;background:#e8f5e9;border-color:#81c784;">🔓 公开</span>
+    </div>
 
     <div class="search-box">
         <input type="text" id="searchInput" placeholder="🔍 搜索标题、来源、关键词..." />
@@ -386,6 +392,25 @@
         let allNews = [];
         let currentTimeRange = '48h';
 
+        // 媒体标签映射
+        const mediaTags = {
+            'nytimes.com': '🛡️💳', 'washingtonpost.com': '🛡️💳', 'wsj.com': '🛡️💳',
+            'latimes.com': '🛡️💳', 'usatoday.com': '🔓', 'bloomberg.com': '🔓💳',
+            'cnn.com': '🛡️🔓', 'thetimes.co.uk': '🛡️💳', 'theguardian.com': '🔓',
+            'telegraph.co.uk': '🛡️💳', 'independent.co.uk': '🔓', 'ft.com': '🛡️💳',
+            'dailymail.co.uk': '🔓', 'thesun.co.uk': '🔓', 'bbc.com': '🔓',
+            'reuters.com': '🔓', 'euronews.com': '🔓', 'politico.eu': '🔓',
+            'afp.com': '🔓', 'euractiv.com': '🔓', 'businesstimes.com.sg': '💳'
+        };
+        function getMediaTags(source) {
+            if (!source) return '';
+            const s = source.toLowerCase();
+            for (const [domain, tags] of Object.entries(mediaTags)) {
+                if (s.includes(domain.replace('www.','')) || s.includes(domain)) return tags;
+            }
+            return '';
+        }
+
         function getTimeFiltered(news, range) {
             if (range === 'all') return news;
             const hours = range === '7d' ? 168 : 48;
@@ -434,7 +459,7 @@
                     : '';
 
                 const sourceHtml = item.source
-                    ? `<span class="source">📰 ${item.source}</span>`
+                    ? `<span class="source">📰 ${item.source} ${getMediaTags(item.source)}</span>`
                     : '';
 
                 const titleZh = item.title_zh && item.title_zh !== item.title
