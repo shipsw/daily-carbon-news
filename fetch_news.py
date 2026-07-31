@@ -102,23 +102,125 @@ def save_url_map(url_map):
     print(f"  🔗 短网址映射已保存 ({len(url_map)} 条)")
 
 
+def generate_redirect_pages(url_map):
+    """
+    为每个短码生成静态重定向页面 (s/<code>/index.html)
+    用于 GitHub Pages 等纯静态托管环境
+    """
+    from html import escape
+
+    redirect_dir = os.path.join(DATA_DIR, "s")
+    os.makedirs(redirect_dir, exist_ok=True)
+
+    count = 0
+    for code, entry in url_map.items():
+        target = entry.get("url", "")
+        if not target:
+            continue
+
+        # HTML 转义，防止引号/& 等破坏页面结构
+        target_esc = escape(target, quote=True)
+        target_js = json.dumps(target)  # 生成 JS 字符串字面量（自动转义）
+        title = entry.get("title", "") or ""
+        title_esc = escape(title)
+
+        html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>正在跳转... - Daily Carbon News</title>
+<meta http-equiv="refresh" content="0; url={target_esc}">
+<script>
+  // 立即跳转
+  window.location.replace({target_js});
+</script>
+<style>
+  body {{ font-family: -apple-system, 'Segoe UI', sans-serif; background: #f0f4f0;
+         color: #1a2a1a; display: flex; align-items: center; justify-content: center;
+         min-height: 100vh; margin: 0; }}
+  .card {{ background: white; border-radius: 12px; padding: 2rem 2.5rem;
+          text-align: center; box-shadow: 0 2px 12px rgba(0,0,0,0.08); max-width: 480px; }}
+  .spinner {{ width: 36px; height: 36px; border: 3px solid #dce8dc;
+             border-top-color: #2d8a4e; border-radius: 50%;
+             animation: spin 0.8s linear infinite; margin: 0 auto 1rem; }}
+  @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+  h2 {{ font-size: 1.1rem; margin-bottom: 0.5rem; }}
+  p {{ font-size: 0.85rem; color: #5a6a5a; margin-bottom: 1.2rem; }}
+  a.btn {{ display: inline-block; background: #2d8a4e; color: white;
+          text-decoration: none; padding: 0.5rem 1.4rem; border-radius: 8px;
+          font-size: 0.85rem; }}
+  a.btn:hover {{ background: #1b5e20; }}
+  .url {{ word-break: break-all; font-size: 0.75rem; color: #889;
+         margin-bottom: 1.2rem; }}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="spinner"></div>
+  <h2>正在跳转到原文…</h2>
+  <p>{title_esc}</p>
+  <div class="url">{target_esc}</div>
+  <a class="btn" href="{target_esc}">立即前往</a>
+</div>
+<noscript>
+  <p>您的浏览器未启用 JavaScript，<a href="{target_esc}">请点击这里手动跳转</a>。</p>
+</noscript>
+</body>
+</html>
+"""
+
+        code_dir = os.path.join(redirect_dir, code)
+        os.makedirs(code_dir, exist_ok=True)
+        with open(os.path.join(code_dir, "index.html"), "w", encoding="utf-8") as f:
+            f.write(html)
+        count += 1
+
+    print(f"  📄 静态重定向页面已生成: {count} 个")
+    return count
+
+
 def assign_short_links(news_items):
     """为新闻条目分配短码，返回 (items, url_map)"""
     url_map = load_url_map()
     existing_codes = set(url_map.keys())
-    
+
+    # 从已有的 news.json 恢复短码映射（确保已分享的短链不失效）
+    url_to_code = {}
+    if os.path.exists(OUTPUT_FILE):
+        try:
+            with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
+                old_news = json.load(f)
+            for old in old_news:
+                code = old.get("short_code") or (old.get("short_link") or "").split("/s/")[-1]
+                link = old.get("link", "")
+                if code and link and code not in url_map:
+                    url_map[code] = {
+                        "url": link,
+                        "title": old.get("title", ""),
+                        "source": old.get("source", ""),
+                        "created": datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S"),
+                        "clicks": 0
+                    }
+                    existing_codes.add(code)
+                if link:
+                    url_to_code[link] = code
+        except (json.JSONDecodeError, IOError):
+            pass
+
     for item in news_items:
         original_url = item.get("link", "")
         if not original_url:
             continue
-        
+
         # 如果该 URL 已有短码，直接复用
         existing_code = None
         for code, entry in url_map.items():
             if entry.get("url") == original_url:
                 existing_code = code
                 break
-        
+        if not existing_code:
+            existing_code = url_to_code.get(original_url)
+
         if existing_code:
             item["short_code"] = existing_code
             item["short_link"] = f"/s/{existing_code}"
@@ -218,6 +320,9 @@ def save_news(news_items):
 
     # 保存 URL 映射
     save_url_map(url_map)
+
+    # 生成静态重定向页面 (GitHub Pages 兼容)
+    generate_redirect_pages(url_map)
 
     print(f"✅ 已保存 {len(existing)} 条新闻到 {OUTPUT_FILE}")
     return existing
