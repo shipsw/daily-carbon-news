@@ -935,7 +935,7 @@
                 '发布时间': item.published || '',
                 '摘要': (item.snippet || '').replace(/<[^>]+>/g, ''),
                 '链接': item.link || '',
-                '短链': getCleanDomain(item.source) ? `https://${getCleanDomain(item.source)}` : item.link || '',
+                '短链': item.short_link ? new URL(item.short_link, window.location.href).href : (item.link || ''),
                 '匹配关键词': (item.matched_keywords || []).join('、'),
             }));
             const ws = XLSX.utils.json_to_sheet(rows);
