@@ -191,7 +191,11 @@ def assign_short_links(news_items):
             with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
                 old_news = json.load(f)
             for old in old_news:
-                code = old.get("short_code") or (old.get("short_link") or "").split("/s/")[-1]
+                code = old.get("short_code") or ""
+                if not code:
+                    # 兼容 /s/xxx 或 s/xxx 两种格式
+                    short = old.get("short_link") or ""
+                    code = short.rstrip("/").split("/")[-1]
                 link = old.get("link", "")
                 if code and link and code not in url_map:
                     url_map[code] = {
@@ -223,7 +227,7 @@ def assign_short_links(news_items):
 
         if existing_code:
             item["short_code"] = existing_code
-            item["short_link"] = f"/s/{existing_code}"
+            item["short_link"] = f"s/{existing_code}"
             continue
         
         # 生成唯一短码
@@ -237,7 +241,7 @@ def assign_short_links(news_items):
         
         existing_codes.add(code)
         item["short_code"] = code
-        item["short_link"] = f"/s/{code}"
+        item["short_link"] = f"s/{code}"
         
         # 记录映射
         url_map[code] = {
