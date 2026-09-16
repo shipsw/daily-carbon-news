@@ -24,7 +24,7 @@ if sys.platform == "win32":
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# 翻译模块 - 使用 deep-translator
+# 翻译模块 - 使用 deep-translator（Google 优先，MyMemory 备选）
 try:
     from deep_translator import GoogleTranslator
     _translator = GoogleTranslator(source='en', target='zh-CN')
@@ -32,23 +32,88 @@ try:
 except Exception:
     _translation_available = False
 
+try:
+    from deep_translator import MyMemoryTranslator
+    _fallback_translator = MyMemoryTranslator(source='en-US', target='zh-CN')
+    _fallback_available = True
+except Exception:
+    _fallback_available = False
+
+# Google 被限流时标记，本次运行后续直接走备选源，避免无谓重试
+_google_blocked = False
+
+
+def _is_rate_limit(err):
+    """判断是否为限流错误"""
+    msg = str(err).lower().replace(" ", "")
+    return ("toomanyrequests" in msg or "429" in msg
+            or "rate" in msg or "quota" in msg)
+
+
+def _translate_with_retry(text, max_retries=2):
+    """
+    翻译单条文本：Google 优先，被限流后自动切换 MyMemory。
+    返回 (结果, 错误)
+    """
+    global _google_blocked
+    last_err = None
+
+    # 1. 优先 Google（未被限流时）
+    if _translation_available and not _google_blocked:
+        for attempt in range(max_retries):
+            try:
+                result = _translator.translate(text)
+                if result:
+                    return result, None
+            except Exception as e:
+                last_err = e
+                if _is_rate_limit(e):
+                    _google_blocked = True
+                    print("    ⚠️ Google 翻译被限流，本次运行改用 MyMemory")
+                    break
+                time.sleep(0.5)
+
+    # 2. 备选 MyMemory（Google 不可用时）
+    if _fallback_available:
+        try:
+            result = _fallback_translator.translate(text[:500])
+            if result:
+                return result, None
+        except Exception as e:
+            last_err = e
+
+    return None, last_err
+
 
 def translate_to_zh(text):
-    """翻译单条文本"""
+    """翻译单条文本（带重试）"""
     if not text or not _translation_available:
         return text
-    try:
-        has_english = any(c.isascii() and c.isalpha() for c in text)
-        if not has_english or len(text) < 10:
-            return text
-        return _translator.translate(text[:2000])
-    except Exception:
-        pass
-    return text
+    has_english = any(c.isascii() and c.isalpha() for c in text)
+    if not has_english or len(text) < 10:
+        return text
+    result, _ = _translate_with_retry(text[:2000])
+    return result if result else text
+
+
+def load_existing_translations():
+    """加载已有翻译缓存 {link: title_zh}，避免重复翻译"""
+    cache = {}
+    if os.path.exists(OUTPUT_FILE):
+        try:
+            with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
+                for item in json.load(f):
+                    link = item.get("link")
+                    zh = item.get("title_zh")
+                    if link and zh and zh != item.get("title"):
+                        cache[link] = zh
+        except (json.JSONDecodeError, IOError):
+            pass
+    return cache
 
 
 def batch_translate(items, key="title", max_workers=3):
-    """串行翻译（避免线程安全问题）"""
+    """串行翻译（带频率控制和重试，避免触发 Google 限流）"""
     if not _translation_available:
         return items
     
@@ -59,20 +124,28 @@ def batch_translate(items, key="title", max_workers=3):
     print(f"  🌐 正在翻译 {len(texts)} 条 {key}...")
     
     done = 0
-    for idx, txt in texts:
-        try:
-            has_en = any(c.isascii() and c.isalpha() for c in txt)
-            if has_en and len(txt) >= 10:
-                result = _translator.translate(txt[:2000])
-                if result and result != txt:
-                    items[idx][key + "_zh"] = result
-                    done += 1
-                    continue
-        except Exception:
-            pass
-        items[idx][key + "_zh"] = txt
+    failed = 0
+    for n, (idx, txt) in enumerate(texts):
+        has_en = any(c.isascii() and c.isalpha() for c in txt)
+        if has_en and len(txt) >= 10:
+            result, err = _translate_with_retry(txt[:2000])
+            if result and result != txt:
+                items[idx][key + "_zh"] = result
+                done += 1
+            else:
+                items[idx][key + "_zh"] = txt
+                failed += 1
+                if failed <= 3 and err:
+                    print(f"    ⚠️ 翻译失败: {str(err)[:100]}")
+        else:
+            items[idx][key + "_zh"] = txt
+        
+        # 频率控制：每条间隔，避免触发 Google 限流
+        time.sleep(0.35)
+        if (n + 1) % 10 == 0:
+            time.sleep(1.2)
     
-    print(f"  ✅ {key} 翻译完成: {done}/{len(texts)}")
+    print(f"  ✅ {key} 翻译完成: {done}/{len(texts)}" + (f"，失败 {failed}" if failed else ""))
     return items
 
 
@@ -577,8 +650,23 @@ def run():
     unique_news = resolve_links(unique_news)
     print(f"  🔗 精简链接完成")
 
-    # 批量翻译标题到中文
-    unique_news = batch_translate(unique_news, key="title")
+    # 翻译前：复用已有翻译，只翻译新增新闻（大幅减少请求，避免限流）
+    existing_cache = load_existing_translations()
+    to_translate = []
+    reused = 0
+    for item in unique_news:
+        cached = existing_cache.get(item.get("link"))
+        if cached:
+            item["title_zh"] = cached
+            reused += 1
+        else:
+            to_translate.append(item)
+
+    print(f"  ♻️ 复用已有翻译 {reused} 条，需新翻译 {len(to_translate)} 条")
+
+    # 只翻译新增新闻
+    if to_translate:
+        batch_translate(to_translate, key="title")
 
     # 统计翻译情况
     translated_count = sum(1 for n in unique_news if n.get("title_zh") and n["title_zh"] != n["title"])
