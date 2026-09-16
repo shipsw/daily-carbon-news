@@ -34,7 +34,11 @@ except Exception:
 
 try:
     from deep_translator import MyMemoryTranslator
-    _fallback_translator = MyMemoryTranslator(source='en-US', target='zh-CN')
+    # 配置邮箱可将 MyMemory 配额从 1000 词/天提升到 50000 字符/天
+    _mymemory_email = os.environ.get("MYMEMORY_EMAIL") or None
+    _fallback_translator = MyMemoryTranslator(
+        source='en-US', target='zh-CN', email=_mymemory_email
+    )
     _fallback_available = True
 except Exception:
     _fallback_available = False

@@ -65,6 +65,9 @@ jobs:
 
       - name: 🕸️ 抓取新闻
         if: steps.check.outputs.fetch == 'true'
+        env:
+          # 可选：在 GitHub Secrets 配置 MYMEMORY_EMAIL 可提升翻译配额
+          MYMEMORY_EMAIL: ${{ secrets.MYMEMORY_EMAIL }}
         run: python fetch_news.py
 
       - name: 📄 准备部署文件
