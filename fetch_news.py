@@ -149,6 +149,39 @@ def batch_translate(items, key="title", max_workers=3):
     return items
 
 
+def backfill_translations(news_list, limit=30):
+    """
+    回填历史未翻译的标题（渐进式补齐，每次运行最多翻译 limit 条）
+    避免一次性大量请求触发限流
+    """
+    if not _translation_available and not _fallback_available:
+        return 0
+
+    cache = load_existing_translations()
+    targets = []
+    for n in news_list:
+        if len(targets) >= limit:
+            break
+        if n.get("link") in cache:
+            continue
+        t = n.get("title", "")
+        if any(c.isascii() and c.isalpha() for c in t) and len(t) >= 10:
+            targets.append(n)
+
+    if not targets:
+        print("  ✅ 历史标题已全部翻译")
+        return 0
+
+    print(f"  🔄 回填历史翻译 {len(targets)} 条（上限 {limit}）...")
+    batch_translate(targets, key="title")
+
+    # 保存回 news.json
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(news_list, f, ensure_ascii=False, indent=2)
+
+    return len(targets)
+
+
 def generate_short_code(length=7):
     """生成随机短码 (a-zA-Z0-9)"""
     chars = string.ascii_letters + string.digits
@@ -674,6 +707,9 @@ def run():
 
     # 保存
     saved = save_news(unique_news)
+
+    # 回填历史未翻译标题（渐进式，每次最多 30 条）
+    backfill_translations(saved, limit=30)
 
     print(f"\n✅ 任务完成！当前共 {len(saved)} 条新闻数据")
     return saved
